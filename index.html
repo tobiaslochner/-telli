@@ -6,26 +6,18 @@
     <title>KI im Deutsch-Unterricht: Ideen für telli</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Eigenes Styling für das <details> Element für weiche Übergänge */
-        details > summary {
-            list-style: none;
-        }
-        details > summary::-webkit-details-marker {
-            display: none;
-        }
+        details > summary { list-style: none; }
+        details > summary::-webkit-details-marker { display: none; }
         .filter-btn.active {
-            background-color: #2563eb; /* blue-600 */
+            background-color: #2563eb;
             color: white;
             border-color: #2563eb;
         }
-        .filter-btn {
-            transition: all 0.2s ease-in-out;
-        }
+        .filter-btn { transition: all 0.2s ease-in-out; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 font-sans min-h-screen">
 
-    <!-- Header -->
     <header class="bg-white shadow-sm sticky top-0 z-10">
         <div class="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
             <h1 class="text-3xl font-extrabold text-slate-900">KI im Unterricht</h1>
@@ -35,7 +27,6 @@
 
     <main class="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
         
-        <!-- Filter Section -->
         <section class="mb-10 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-lg font-semibold text-slate-800">Filter</h2>
@@ -43,19 +34,14 @@
             </div>
             
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <!-- Fach Filter -->
                 <div>
                     <h3 class="text-sm font-medium text-slate-500 uppercase tracking-wider mb-2">Fach</h3>
                     <div class="flex flex-wrap gap-2" id="filter-subject-container"></div>
                 </div>
-
-                <!-- Telli-Ebene Filter -->
                 <div>
                     <h3 class="text-sm font-medium text-slate-500 uppercase tracking-wider mb-2">Telli-Ebene</h3>
                     <div class="flex flex-wrap gap-2" id="filter-type-container"></div>
                 </div>
-
-                <!-- Stufe Filter -->
                 <div>
                     <h3 class="text-sm font-medium text-slate-500 uppercase tracking-wider mb-2">Stufe(n)</h3>
                     <div class="flex flex-wrap gap-2" id="filter-level-container"></div>
@@ -63,40 +49,23 @@
             </div>
             
             <div class="mt-6 pt-4 border-t border-slate-100 text-right">
-                <span id="result-count" class="text-sm text-slate-500 font-medium">Lade Einträge...</span>
+                <span id="result-count" class="text-sm text-slate-500 font-medium">Suche Datei...</span>
             </div>
         </section>
 
-        <!-- Container für Ladeanzeige oder Fehlermeldungen -->
-        <div id="status-message" class="text-center py-10 hidden"></div>
+        <!-- Status & Fehleranzeige -->
+        <div id="status-message" class="hidden my-10 p-6 bg-white rounded-xl border-2 border-dashed border-slate-300 text-center">
+            <div id="status-text" class="text-slate-600"></div>
+        </div>
 
-        <!-- Cards Container -->
         <section id="cards-container" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            <!-- Karten werden per JS generiert -->
+            <!-- Karten werden hier eingefügt -->
         </section>
-
     </main>
 
     <script>
-        // --- GLOBALE VARIABLEN ---
         let promptsData = [];
-        let subjects = [];
-        let types = [];
-        let levels = [];
-        
-        let activeFilters = {
-            subjects: new Set(),
-            types: new Set(),
-            levels: new Set()
-        };
-
-        const subjectContainer = document.getElementById('filter-subject-container');
-        const typeContainer = document.getElementById('filter-type-container');
-        const levelContainer = document.getElementById('filter-level-container');
-        const cardsContainer = document.getElementById('cards-container');
-        const resultCount = document.getElementById('result-count');
-        const resetBtn = document.getElementById('reset-filters');
-        const statusMessage = document.getElementById('status-message');
+        let activeFilters = { subjects: new Set(), types: new Set(), levels: new Set() };
 
         const typeColors = {
             "Prompt": "bg-indigo-100 text-indigo-800 border-indigo-200",
@@ -106,93 +75,74 @@
             "Bildgenerierung": "bg-cyan-100 text-cyan-800 border-cyan-200"
         };
 
-        // --- DATEN LADEN & PARSEN (MARKDOWN) ---
+        function showStatus(msg, isError = false) {
+            const statusBox = document.getElementById('status-message');
+            const statusText = document.getElementById('status-text');
+            statusBox.classList.remove('hidden');
+            statusText.innerHTML = msg;
+            if (isError) statusText.classList.add('text-red-600');
+        }
+
         async function loadPromptsData() {
             try {
-                // Holt die prompts.md Datei aus demselben Ordner
+                // Fix: Direkte Verwendung des relativen Pfades. 
+                // In Blob-basierten Vorschauumgebungen scheitert new URL('prompts.md', window.location.href).
                 const response = await fetch('prompts.md');
-                if (!response.ok) throw new Error("Netzwerkfehler beim Laden der Datei.");
-                const text = await response.text();
                 
-                // Markdown in Blöcke aufteilen (getrennt durch ---)
-                const blocks = text.split(/\n---\n/);
+                if (!response.ok) {
+                    throw new Error(`Datei 'prompts.md' nicht gefunden (Status: ${response.status}). Stellen Sie sicher, dass sie im gleichen Ordner liegt.`);
+                }
+
+                const text = await response.text();
+                const blocks = text.split(/\r?\n---\r?\n/);
                 const parsedData = [];
 
                 blocks.forEach(block => {
-                    if (!block.trim()) return; // Leere Blöcke überspringen
+                    if (!block.trim()) return;
 
-                    // Reguläre Ausdrücke um die Zeilen zu finden
                     const titleMatch = block.match(/^#\s+(#\d+)\s+(.+)$/m);
                     const subjectMatch = block.match(/\*\*Fach:\*\*\s*(.+)/);
                     const typeMatch = block.match(/\*\*Telli-Ebene:\*\*\s*(.+)/);
                     const levelsMatch = block.match(/\*\*Stufen?:\*\*\s*(.+)/);
                     const descMatch = block.match(/\*\*Beschreibung:\*\*\s*(.+)/);
 
-                    if (titleMatch && typeMatch && levelsMatch && descMatch) {
+                    if (titleMatch && typeMatch) {
                         const id = titleMatch[1];
                         const title = titleMatch[2];
                         const subject = subjectMatch ? subjectMatch[1].trim() : "Deutsch";
                         const type = typeMatch[1].trim();
-                        // Stufen am Komma auftrennen und Leerzeichen entfernen
-                        const levels = levelsMatch[1].split(',').map(s => s.trim());
-                        const desc = descMatch[1].trim();
+                        const levelsArr = levelsMatch ? levelsMatch[1].split(',').map(s => s.trim()) : ["Nicht angegeben"];
+                        const desc = descMatch ? descMatch[1].trim() : "";
                         
-                        // Alles nach der Beschreibung ist der "Content" (der Prompttext)
-                        const contentSplit = block.split(/\*\*Beschreibung:\*\*.*?\n/);
+                        const contentSplit = block.split(/\*\*Beschreibung:\*\*.*?\r?\n/);
                         let rawContent = contentSplit.length > 1 ? contentSplit[1].trim() : "";
                         
-                        // Minimaler Markdown->HTML Übersetzer für den Fließtext
-                        // Wandelt **Text** in <strong>Text</strong> um und Zeilenumbrüche in <br>
                         let contentHtml = rawContent
                             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
                             .replace(/\n/g, '<br>');
 
-                        parsedData.push({ id, title, subject, type, levels, desc, content: contentHtml });
+                        parsedData.push({ id, title, subject, type, levels: levelsArr, desc, content: contentHtml });
                     }
                 });
+
+                if (parsedData.length === 0) {
+                    showStatus("Keine gültigen Einträge in 'prompts.md' gefunden.");
+                } else {
+                    document.getElementById('status-message').classList.add('hidden');
+                }
 
                 return parsedData;
 
             } catch (error) {
-                console.error("Fehler beim Laden:", error);
-                statusMessage.innerHTML = `
-                    <div class="text-red-500 font-medium">Fehler: prompts.md konnte nicht geladen werden.</div>
-                    <div class="text-sm text-slate-500 mt-2">Wenn du die Datei lokal auf dem Computer öffnest, blockieren Browser aus Sicherheitsgründen oft den Abruf externer Dateien. Du benötigst dann einen lokalen Webserver (z.B. die "Live Server" Erweiterung). Sobald die Dateien online bei GitHub gehostet sind, funktioniert es automatisch.</div>
-                `;
-                statusMessage.classList.remove('hidden');
-                resultCount.textContent = "0 Einträge";
+                console.error("Ladefehler:", error);
+                let errorMsg = `<strong>Fehler beim Laden der Daten:</strong><br>${error.message}`;
+                
+                if (window.location.protocol === 'file:') {
+                    errorMsg += `<br><br><span class="text-sm italic">Hinweis: Lokale Datei-Zugriffe (file://) sind im Browser oft eingeschränkt. Nutzen Sie GitHub oder einen Webserver.</span>`;
+                }
+                showStatus(errorMsg, true);
                 return [];
             }
-        }
-
-        // --- UI FUNKTIONEN ---
-        function createFilterButtons() {
-            // Fach Filter
-            subjects.forEach(subject => {
-                const btn = document.createElement('button');
-                btn.className = `filter-btn px-4 py-2 rounded-full border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-100`;
-                btn.textContent = subject;
-                btn.onclick = () => toggleFilter('subjects', subject, btn);
-                subjectContainer.appendChild(btn);
-            });
-
-            // Typ Filter (Telli-Ebene)
-            types.forEach(type => {
-                const btn = document.createElement('button');
-                btn.className = `filter-btn px-4 py-2 rounded-full border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-100`;
-                btn.textContent = type;
-                btn.onclick = () => toggleFilter('types', type, btn);
-                typeContainer.appendChild(btn);
-            });
-
-            // Stufen Filter
-            levels.forEach(level => {
-                const btn = document.createElement('button');
-                btn.className = `filter-btn px-4 py-2 rounded-full border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-100`;
-                btn.textContent = level;
-                btn.onclick = () => toggleFilter('levels', level, btn);
-                levelContainer.appendChild(btn);
-            });
         }
 
         function toggleFilter(category, value, buttonEl) {
@@ -206,101 +156,77 @@
             renderCards();
         }
 
-        function resetAllFilters() {
-            activeFilters.subjects.clear();
-            activeFilters.types.clear();
-            activeFilters.levels.clear();
-            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
-            renderCards();
-        }
-
         function createCard(item) {
             const card = document.createElement('div');
             card.className = "bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col transition hover:shadow-md";
-            
             const typeBadgeColor = typeColors[item.type] || "bg-gray-100 text-gray-800 border-gray-200";
             
-            const tagsHtml = `
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-800 border border-purple-200">
-                    ${item.subject}
-                </span>
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${typeBadgeColor} border">
-                    ${item.type}
-                </span>
-                ${item.levels.map(l => `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">${l}</span>`).join('')}
-            `;
-
             card.innerHTML = `
                 <div class="p-6 flex-grow">
                     <div class="flex flex-wrap gap-2 mb-4">
-                        ${tagsHtml}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-800 border border-purple-200">${item.subject}</span>
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${typeBadgeColor} border">${item.type}</span>
+                        ${item.levels.map(l => `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">${l}</span>`).join('')}
                     </div>
-                    <h3 class="text-xl font-bold text-slate-900 mb-2 leading-tight">
-                        <span class="text-blue-600">${item.id}</span> ${item.title}
-                    </h3>
-                    <p class="text-slate-600 text-sm mb-4 leading-relaxed">
-                        ${item.desc}
-                    </p>
+                    <h3 class="text-xl font-bold text-slate-900 mb-2 leading-tight"><span class="text-blue-600">${item.id}</span> ${item.title}</h3>
+                    <p class="text-slate-600 text-sm mb-4 leading-relaxed">${item.desc}</p>
                 </div>
-                
                 <details class="group border-t border-slate-100">
                     <summary class="flex items-center justify-between cursor-pointer p-4 bg-slate-50 hover:bg-slate-100 transition-colors text-sm font-medium text-blue-600 select-none">
                         <span>Details / Prompttext anzeigen</span>
-                        <svg class="w-5 h-5 text-blue-500 transform group-open:rotate-180 transition-transform duration-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                        </svg>
+                        <svg class="w-5 h-5 text-blue-500 transform group-open:rotate-180 transition-transform duration-200" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
                     </summary>
-                    <div class="p-5 bg-white border-t border-slate-100 text-sm text-slate-700 leading-relaxed">
-                        ${item.content}
-                    </div>
+                    <div class="p-5 bg-white border-t border-slate-100 text-sm text-slate-700 leading-relaxed">${item.content}</div>
                 </details>
             `;
             return card;
         }
 
         function renderCards() {
-            cardsContainer.innerHTML = '';
+            const container = document.getElementById('cards-container');
+            container.innerHTML = '';
             
-            const filteredData = promptsData.filter(item => {
-                const subjectMatch = activeFilters.subjects.size === 0 || activeFilters.subjects.has(item.subject);
-                const typeMatch = activeFilters.types.size === 0 || activeFilters.types.has(item.type);
-                const levelMatch = activeFilters.levels.size === 0 || item.levels.some(l => activeFilters.levels.has(l));
-                
-                return subjectMatch && typeMatch && levelMatch;
+            const filtered = promptsData.filter(item => {
+                const sMatch = activeFilters.subjects.size === 0 || activeFilters.subjects.has(item.subject);
+                const tMatch = activeFilters.types.size === 0 || activeFilters.types.has(item.type);
+                const lMatch = activeFilters.levels.size === 0 || item.levels.some(l => activeFilters.levels.has(l));
+                return sMatch && tMatch && lMatch;
             });
 
-            filteredData.forEach(item => {
-                cardsContainer.appendChild(createCard(item));
-            });
-
-            if (filteredData.length === promptsData.length) {
-                resultCount.textContent = `Zeige alle ${promptsData.length} Einträge`;
-            } else {
-                resultCount.textContent = `Zeige ${filteredData.length} von ${promptsData.length} Einträgen`;
-            }
+            filtered.forEach(item => container.appendChild(createCard(item)));
+            document.getElementById('result-count').textContent = `Zeige ${filtered.length} von ${promptsData.length} Einträgen`;
         }
 
-        // --- START ---
         async function init() {
-            // 1. Daten asynchron laden
             promptsData = await loadPromptsData();
-            
-            if (promptsData.length === 0) return; // Abbruch bei Fehler
+            if (promptsData.length === 0) return;
 
-            // 2. Verfügbare Filteroptionen dynamisch aus den Daten ermitteln
-            subjects = [...new Set(promptsData.map(item => item.subject))].sort();
-            types = [...new Set(promptsData.map(item => item.type))].sort();
-            levels = [...new Set(promptsData.flatMap(item => item.levels))].sort();
+            const subjects = [...new Set(promptsData.map(i => i.subject))].sort();
+            const types = [...new Set(promptsData.map(i => i.type))].sort();
+            const levels = [...new Set(promptsData.flatMap(i => i.levels))].sort();
 
-            // 3. UI aufbauen
-            resetBtn.addEventListener('click', resetAllFilters);
-            createFilterButtons();
+            const createBtn = (val, cat, cont) => {
+                const btn = document.createElement('button');
+                btn.className = "filter-btn px-3 py-1.5 rounded-full border border-slate-300 text-xs font-medium text-slate-700 hover:bg-slate-100";
+                btn.textContent = val;
+                btn.onclick = () => toggleFilter(cat, val, btn);
+                cont.appendChild(btn);
+            };
+
+            subjects.forEach(s => createBtn(s, 'subjects', document.getElementById('filter-subject-container')));
+            types.forEach(t => createBtn(t, 'types', document.getElementById('filter-type-container')));
+            levels.forEach(l => createBtn(l, 'levels', document.getElementById('filter-level-container')));
+
+            document.getElementById('reset-filters').onclick = () => {
+                activeFilters.subjects.clear(); activeFilters.types.clear(); activeFilters.levels.clear();
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                renderCards();
+            };
+
             renderCards();
         }
 
-        // Init-Funktion aufrufen
         init();
-
     </script>
 </body>
 </html>
