@@ -85,27 +85,29 @@
 
         async function loadPromptsData() {
             try {
-                // Fix: Direkte Verwendung des relativen Pfades. 
-                // In Blob-basierten Vorschauumgebungen scheitert new URL('prompts.md', window.location.href).
-                const response = await fetch('prompts.md');
+                // Bei GitHub Pages ist Cache-Busting manchmal hilfreich
+                const response = await fetch('prompts.md?v=' + new Date().getTime());
                 
                 if (!response.ok) {
-                    throw new Error(`Datei 'prompts.md' nicht gefunden (Status: ${response.status}). Stellen Sie sicher, dass sie im gleichen Ordner liegt.`);
+                    throw new Error(`Datei 'prompts.md' nicht gefunden (Status: ${response.status}).`);
                 }
 
                 const text = await response.text();
-                const blocks = text.split(/\r?\n---\r?\n/);
+                // Verbesserte Regex für Blöcke (erlaubt auch Leerzeichen um die Trennstriche)
+                const blocks = text.split(/\r?\n\s*---\s*\r?\n/);
                 const parsedData = [];
 
                 blocks.forEach(block => {
                     if (!block.trim()) return;
 
+                    // Regex verbessert: Erlaubt optionalen Whitespace nach den Doppelpunkten
                     const titleMatch = block.match(/^#\s+(#\d+)\s+(.+)$/m);
-                    const subjectMatch = block.match(/\*\*Fach:\*\*\s*(.+)/);
-                    const typeMatch = block.match(/\*\*Telli-Ebene:\*\*\s*(.+)/);
-                    const levelsMatch = block.match(/\*\*Stufen?:\*\*\s*(.+)/);
-                    const descMatch = block.match(/\*\*Beschreibung:\*\*\s*(.+)/);
+                    const subjectMatch = block.match(/\*\*Fach:\*\*\s*(.+)/i);
+                    const typeMatch = block.match(/\*\*Telli-Ebene:\*\*\s*(.+)/i);
+                    const levelsMatch = block.match(/\*\*Stufen?:\*\*\s*(.+)/i);
+                    const descMatch = block.match(/\*\*Beschreibung:\*\*\s*(.+)/i);
 
+                    // Falls Titel und Typ da sind, nehmen wir den Eintrag auf
                     if (titleMatch && typeMatch) {
                         const id = titleMatch[1];
                         const title = titleMatch[2];
@@ -114,7 +116,9 @@
                         const levelsArr = levelsMatch ? levelsMatch[1].split(',').map(s => s.trim()) : ["Nicht angegeben"];
                         const desc = descMatch ? descMatch[1].trim() : "";
                         
-                        const contentSplit = block.split(/\*\*Beschreibung:\*\*.*?\r?\n/);
+                        // Extrahiere den Prompt-Content (alles nach der Beschreibung)
+                        const descRegex = /\*\*Beschreibung:\*\*.*?\r?\n/i;
+                        const contentSplit = block.split(descRegex);
                         let rawContent = contentSplit.length > 1 ? contentSplit[1].trim() : "";
                         
                         let contentHtml = rawContent
@@ -126,7 +130,7 @@
                 });
 
                 if (parsedData.length === 0) {
-                    showStatus("Keine gültigen Einträge in 'prompts.md' gefunden.");
+                    showStatus("Die Datei 'prompts.md' wurde geladen, aber das Format passt nicht. Überprüfe, ob die Datei korrekt mit # #1 Titel beginnt.");
                 } else {
                     document.getElementById('status-message').classList.add('hidden');
                 }
@@ -135,12 +139,7 @@
 
             } catch (error) {
                 console.error("Ladefehler:", error);
-                let errorMsg = `<strong>Fehler beim Laden der Daten:</strong><br>${error.message}`;
-                
-                if (window.location.protocol === 'file:') {
-                    errorMsg += `<br><br><span class="text-sm italic">Hinweis: Lokale Datei-Zugriffe (file://) sind im Browser oft eingeschränkt. Nutzen Sie GitHub oder einen Webserver.</span>`;
-                }
-                showStatus(errorMsg, true);
+                showStatus(`<strong>Fehler:</strong> ${error.message}`, true);
                 return [];
             }
         }
